@@ -13,51 +13,113 @@ from model import Deeplab
 
 from logger import Logger
 
+
+def train(epoch_idx, net, train_loader, lr, logger, n_class):
+    net.cuda()
+    net.train()
+
+    base_params = list(map(id, net.base_net.parameters()))
+    top_params = filter(lambda p: id(p) not in base_params,
+                        net.parameters())
+
+    optimizer = torch.optim.SGD([
+        {'params': top_params},
+        {'params': net.base_net.parameters(), 'lr': lr * 0.01}],
+        lr=lr, momentum=0.9, weight_decay=0.00004)
+
+    criterion = nn.CrossEntropyLoss(ignore_index=-1)
+
+    len_batch = len(train_loader)
+
+    for batch_idx, (data, target) in enumerate(train_loader):
+        data, target = data.cuda(), target.cuda()
+        optimizer.zero_grad()
+
+        score = net(data)
+        loss = criterion(score, target)
+        loss.backward()
+        optimizer.step()
+
+        _, predicted = score.max(1)
+        predicted, target = to_np(predicted), to_np(target)
+        acc, acc_cls, mean_iu = label_accuracy_score(target, predicted, n_class)
+        info = {
+            'acc': acc,
+            'acc_cls': acc_cls,
+            'mean_iu': mean_iu,
+            'loss': loss.data[0]
+        }
+        for tag, value in info.items():
+            logger.scalar_summary(tag, value, len_batch*epoch_idx+batch_idx+1)
+        print(('train', batch_idx, epoch_idx))
+
+    if (epoch_idx+1) % 10 == 0:
+        n = (epoch_idx+1) / 10
+        state = net.state_dict()
+        torch.save(state, './deeplab_epoch_' + str(n)+ '.pth')
+
+def test(epoch_idx, net, test_loader, logger, n_class):
+    net.cuda()
+    net.eval()
+    len_batch = len(test_loader)
+
+    visualizations = []
+    label_trues, label_preds = [], []
+
+    with torch.no_grad():
+        for batch_idx, (inputs, targets) in enumerate(test_loader):
+            inputs, targets = inputs.cuda(), targets.cuda()
+            output = net(inputs)
+            _, predicted = output.max(1)
+            predicted, targets = to_np(predicted), to_np(targets)
+            acc, acc_cls, mean_iu = label_accuracy_score(targets, predicted, n_class)
+            info = {
+                'val_acc': acc,
+                'val_acc_cls': acc_cls,
+                'val_mean_iu': mean_iu
+            }
+            for tag, value in info.items():
+                logger.scalar_summary(tag, value, len_batch*epoch_idx+batch_idx+1)
+            print(('test', batch_idx, epoch_idx))
+
+
 def main():
 
-  logger = Logger('./logs')
+    logger = Logger('./logs')
 
-  model = Deeplab()
+    net = Deeplab()
 
-  dataset = VOC2012ClassSeg('./dataset', split='train', transform=True)
+    train_dataset = VOC2012ClassSeg('./dataset', split='trainaug', transform=True,
+                                    is_training=True)
 
-  train_loader = torch.utils.data.DataLoader(
-      dataset,
-      batch_size=2,
-      shuffle=True,
-      num_workers=1)
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=10,
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True)
 
-  optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
-  criterion = nn.CrossEntropyLoss(ignore_index=-1)
+    test_dataset = VOC2012ClassSeg('./dataset', split='val', transform=True,
+                                   is_training=False)
 
-  n_class = len(dataset.class_names)
+    test_loader = torch.utils.data.DataLoader(
+        test_dataset,
+        batch_size=10,
+        shuffle=False,
+        num_workers=4,
+        pin_memory=True)
 
-  model_file = 'deeplab_init.pth'
-  moda_data = torch.load(model_file)
+    n_class = len(train_dataset.class_names)
 
+    model_file = './deeplab_init.pth'
+    model_data = torch.load(model_file)
+    net.load_state_dict(model_data)
 
-  model.cuda()
+    lr = 0.1
 
-  model.train()
-
-  label_trues, label_preds = [], []
-
-  for batch_idx, (data, target) in enumerate(train_loader):
-    data, target = data.cuda(), target.cuda()
-    optimizer.zero_grad()
-
-    score = model(data)
-    loss = criterion(score, target)
-    loss.backward()
-    optimizer.step()
-
-    _, predicted = score.max(1)
-    predicted, target = to_np(predicted), to_np(target)
-    print(predicted)
-    print(label_accuracy_score(predicted, target, n_class))
-    break
-
-
-
+    for epoch_idx in range(100):
+        train(epoch_idx, net, train_loader, lr, logger, n_class)
+        test(epoch_idx, net, test_loader, logger, n_class)
+        lr *= 0.9
 
 main()

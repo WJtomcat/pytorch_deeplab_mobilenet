@@ -116,7 +116,7 @@ class Deeplab(nn.Module):
     avgpool = F.avg_pool2d(feature, 33)
     avgpool = self.avgpool_connect(avgpool)
     avgpool = F.relu(self.avgpool_batchnorm(avgpool))
-    avgpool = F.upsample(avgpool, size=33, mode='bilinear')
+    avgpool = F.upsample(avgpool, size=33, mode='bilinear', align_corners=True)
 
     head = self.head_conv(feature)
     head = F.relu(self.head_batchnorm(head))
@@ -126,7 +126,7 @@ class Deeplab(nn.Module):
     top = F.relu(self.top_batchnorm(top))
 
     semantic = self.semantic_conv(top)
-    semantic = F.upsample(semantic, size=513, mode='bilinear')
+    semantic = F.upsample(semantic, size=513, mode='bilinear', align_corners=True)
 
     # out = torch.argmax(semantic, dim=1)
     # semantic = torch.argmax(semantic, dim=1)

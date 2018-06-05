@@ -14,7 +14,7 @@ def main():
 
   model = Deeplab()
 
-  dataset = VOC2012ClassSeg('./dataset', split='val', transform=True)
+  dataset = VOC2012ClassSeg('./dataset', split='train', transform=True)
 
   val_loader = torch.utils.data.DataLoader(
       dataset,
