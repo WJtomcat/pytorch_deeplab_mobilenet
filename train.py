@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
-from utils import to_np, label_accuracy_score
+from utils import to_np, label_accuracy_score, fast_hist
 from dataset.voc import VOC2012ClassSeg
 from model import Deeplab
 
@@ -24,7 +24,7 @@ def train(epoch_idx, net, train_loader, lr, logger, n_class):
 
     optimizer = torch.optim.SGD([
         {'params': top_params},
-        {'params': net.base_net.parameters(), 'lr': lr * 0.01}],
+        {'params': net.base_net.parameters(), 'lr': lr * 0.1}],
         lr=lr, momentum=0.9, weight_decay=0.00004)
 
     criterion = nn.CrossEntropyLoss(ignore_index=-1)
@@ -64,7 +64,8 @@ def test(epoch_idx, net, test_loader, logger, n_class):
     len_batch = len(test_loader)
 
     visualizations = []
-    label_trues, label_preds = [], []
+
+    hist = np.zeros((n_class, n_class))
 
     with torch.no_grad():
         for batch_idx, (inputs, targets) in enumerate(test_loader):
@@ -72,15 +73,14 @@ def test(epoch_idx, net, test_loader, logger, n_class):
             output = net(inputs)
             _, predicted = output.max(1)
             predicted, targets = to_np(predicted), to_np(targets)
-            acc, acc_cls, mean_iu = label_accuracy_score(targets, predicted, n_class)
-            info = {
-                'val_acc': acc,
-                'val_acc_cls': acc_cls,
-                'val_mean_iu': mean_iu
-            }
-            for tag, value in info.items():
-                logger.scalar_summary(tag, value, len_batch*epoch_idx+batch_idx+1)
             print(('test', batch_idx, epoch_idx))
+            hist += fast_hist(targets.flatten(), predicted.flatten(), n_class)
+        miou = np.diag(hist) / (hist.sum(1) + hist.sum(0) - np.diag(hist))
+        miou = np.sum(miou)/len(miou)
+        logger.scalar_summary('Mean iou', miou, epoch_idx)
+        print(('Mean iou: ', miou))
+
+
 
 
 def main():
@@ -89,7 +89,7 @@ def main():
 
     net = Deeplab()
 
-    train_dataset = VOC2012ClassSeg('./dataset', split='trainaug', transform=True,
+    train_dataset = VOC2012ClassSeg('./dataset', split='train', transform=True,
                                     is_training=True)
 
     train_loader = torch.utils.data.DataLoader(
@@ -111,15 +111,15 @@ def main():
 
     n_class = len(train_dataset.class_names)
 
-    model_file = './deeplab_init.pth'
+    model_file = './deeplab.pth'
     model_data = torch.load(model_file)
     net.load_state_dict(model_data)
 
-    lr = 0.1
+    lr = 0.001
 
     for epoch_idx in range(100):
-        train(epoch_idx, net, train_loader, lr, logger, n_class)
         test(epoch_idx, net, test_loader, logger, n_class)
+        train(epoch_idx, net, train_loader, lr, logger, n_class)
         lr *= 0.9
 
 main()

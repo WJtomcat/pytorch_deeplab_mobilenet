@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def _fast_hist(label_true, label_pred, n_class):
+def fast_hist(label_true, label_pred, n_class):
     mask = (label_true >= 0) & (label_true < n_class)
     hist = np.bincount(
         n_class * label_true[mask].astype(int) +
@@ -19,7 +19,7 @@ def label_accuracy_score(label_trues, label_preds, n_class):
     """
     # hist = np.zeros((n_class, n_class))
     # for lt, lp in zip(label_trues, label_preds):
-    hist = _fast_hist(label_trues.flatten(), label_preds.flatten(), n_class)
+    hist = fast_hist(label_trues.flatten(), label_preds.flatten(), n_class)
     acc = float(np.diag(hist).sum()) / hist.sum()
     acc_cls = np.diag(hist).astype(float) / hist.sum(axis=1)
     acc_cls = np.nanmean(acc_cls)
@@ -42,7 +42,7 @@ def eval_metrics(label_trues, label_preds, n_class):
     """
     hist = np.zeros((n_class, n_class))
     for lt, lp in zip(label_trues, label_preds):
-        hist += _fast_hist(lt.flatten(), lp.flatten(), n_class)
+        hist += fast_hist(lt.flatten(), lp.flatten(), n_class)
     acc = np.diag(hist).sum() / hist.sum()
     acc_cls = np.diag(hist) / hist.sum(axis=1)
     acc_cls = np.nanmean(acc_cls)
