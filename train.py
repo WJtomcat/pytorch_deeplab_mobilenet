@@ -24,7 +24,7 @@ def train(epoch_idx, net, train_loader, lr, logger, n_class):
 
     optimizer = torch.optim.SGD([
         {'params': top_params},
-        {'params': net.base_net.parameters(), 'lr': lr * 0.1}],
+        {'params': net.base_net.parameters(), 'lr': lr*0.1}],
         lr=lr, momentum=0.9, weight_decay=0.00004)
 
     criterion = nn.CrossEntropyLoss(ignore_index=-1)
@@ -89,7 +89,7 @@ def main():
 
     net = Deeplab()
 
-    train_dataset = VOC2012ClassSeg('./dataset', split='train', transform=True,
+    train_dataset = VOC2012ClassSeg('./dataset', split='trainaug', transform=True,
                                     is_training=True)
 
     train_loader = torch.utils.data.DataLoader(
@@ -111,15 +111,16 @@ def main():
 
     n_class = len(train_dataset.class_names)
 
-    model_file = './deeplab.pth'
+    model_file = './deeplab_init.pth'
     model_data = torch.load(model_file)
     net.load_state_dict(model_data)
 
-    lr = 0.001
+    lr = 0.01
 
     for epoch_idx in range(100):
+        logger.scalar_summary('lr', lr, epoch_idx)
         test(epoch_idx, net, test_loader, logger, n_class)
         train(epoch_idx, net, train_loader, lr, logger, n_class)
-        lr *= 0.9
+        lr *= 0.98
 
 main()
